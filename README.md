@@ -162,11 +162,21 @@
         }
         .start-btn:hover:not(:disabled):not(.syncing) { background-color: #387ad1; }
         
+        /* Style Default Tombol Reset */
         .reset-btn { 
-            background-color: var(--color-alert);
+            background-color: #6c757d; /* Abu-abu untuk reset normal */
             color: white; 
         }
-        .reset-btn:hover:not(:disabled) { background-color: #b82c3c; }
+        .reset-btn:hover:not(:disabled) { background-color: #5a6268; }
+
+        /* BARU: Style untuk Tombol STOP/DISMISS saat WAKTU HABIS */
+        .stop-alarm-btn {
+            background-color: var(--color-alert) !important; 
+            color: white;
+            font-size: 1.1em;
+            padding: 10px 15px;
+            animation: pulse-stop 0.5s infinite alternate; 
+        }
 
         .timer-controls button:disabled {
             background-color: #999;
@@ -210,6 +220,10 @@
             from { background-color: var(--color-syncing); }
             to { background-color: #ff7f00; }
         }
+        @keyframes pulse-stop {
+            from { opacity: 1; box-shadow: 0 0 10px rgba(220, 53, 69, 0.7); }
+            to { opacity: 0.8; box-shadow: none; }
+        }
 
         /* MEDIA QUERY */
         @media (max-width: 650px) {
@@ -221,14 +235,16 @@
             .timer-controls { flex-wrap: wrap; gap: 8px; justify-content: space-between; }
             .timer-controls label { flex-basis: 100%; text-align: left; font-size: 0.9em; }
             .timer-controls input { max-width: 80px; flex-grow: 0; }
+            /* Atur lebar tombol agar tombol STOP tetap lebar saat alarm */
             .timer-controls button { padding: 10px; font-size: 0.9em; flex-basis: calc(50% - 5px); }
+            .stop-alarm-btn { flex-basis: 100%; } /* Tombol STOP ambil lebar penuh */
         }
     </style>
 </head>
 <body>
     <div class="main-container">
         <h1>Gacoan Timer Thawing 🧊</h1>
-        <p>Timer disinkronkan secara real-time. (v1.2 Sync)</p>
+        <p>Timer disinkronkan secara real-time. (v1.3 UX Stop Button)</p>
         
         <div class="timer-list" id="timer-list">
         </div>
@@ -238,6 +254,7 @@
        // ===================================
         // FIREBASE CONFIGURATION (WAJIB GANTI)
         // ===================================
+        // JANGAN UBAH KONFIGURASI INI JIKA SUDAH BERHASIL DEPLOY
         const firebaseConfig = {
           apiKey: "AIzaSyBtUlghTw806GuGuwOXGNgoqN6Rkcg0IMM",
           authDomain: "thawing-ec583.firebaseapp.com",
@@ -382,6 +399,7 @@
             }, 800);
         }
 
+        // FUNGSI UNTUK MEMATIKAN SEMUA ALARM AGRESIF (Dipanggil oleh Tombol STOP)
         function stopAggressiveAlarm() {
             if (titleInterval) {
                 clearInterval(titleInterval);
@@ -396,17 +414,20 @@
             if ('speechSynthesis' in window) {
                 window.speechSynthesis.cancel(); 
             }
+            if ('vibrate' in navigator) {
+                 navigator.vibrate(0); // Stop vibration
+            }
         }
         
         // --- LOGIKA UTAMA: FUNGSI TICK (Update tampilan berdasarkan data Firebase) ---
         
-        function tick(itemId, endTimeMs, inputMinutes) {
+        function tick(itemId, endTimeMs, inputMinutes, timerState) {
             const timerCard = document.getElementById(`card-${itemId}`);
             if (!timerCard) return;
 
             const display = document.getElementById(`display-${itemId}`);
             const alarmMessage = document.getElementById(`msg-${itemId}`);
-            const endTimeDisplay = document.getElementById(`end-time-${itemId}`); // BARU
+            const endTimeDisplay = document.getElementById(`end-time-${itemId}`);
             const item = THAWING_ITEMS.find(i => i.id === itemId);
             const itemName = item ? item.name : 'Bahan';
             
@@ -415,14 +436,20 @@
             const now = Date.now();
             let duration = Math.floor((endTimeMs - now) / 1000); 
             
-            // --- UPDATE TAMPILAN KONTROL ---
+            // --- UPDATE TAMPILAN KONTROL (Mode Running) ---
             const inputTime = document.getElementById(`time-input-${itemId}`);
             const startButton = document.getElementById(`start-btn-${itemId}`);
             const resetButton = document.getElementById(`reset-btn-${itemId}`);
+            
             if (inputTime) inputTime.value = inputMinutes; 
             if (inputTime) inputTime.readOnly = true;
             if (startButton) startButton.style.display = 'none';
-            if (resetButton) resetButton.style.display = 'block';
+            if (resetButton) {
+                resetButton.style.display = 'block';
+                // Pastikan tombol reset dalam mode normal saat Running
+                resetButton.textContent = 'RESET'; 
+                resetButton.classList.remove('stop-alarm-btn');
+            }
             
             // Tampilkan waktu selesai (End Time)
             const formattedEndTime = new Date(endTimeMs).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
@@ -459,13 +486,24 @@
                 delete activeIntervals[itemId];
                 
                 // Hapus entry dari Firebase (PENTING untuk sinkronisasi RESET)
-                dbRef.child(itemId).remove().catch(e => console.log('Hapus item gagal.'));
+                // Hanya hapus jika data masih ada untuk mencegah pengulangan alarm saat reload
+                if (timerState) { 
+                    dbRef.child(itemId).remove().catch(e => console.log('Hapus item gagal.'));
+                }
                 
                 display.textContent = "WAKTU HABIS!";
                 timerCard.classList.remove('warning');
                 timerCard.classList.add('alert'); 
                 alarmMessage.textContent = `✅ SELESAI! Bahan ${itemName} butuh penanganan.`;
                 alarmMessage.style.display = 'block';
+                
+                // BARU: Tombol berubah menjadi STOP ALARM
+                if (resetButton) {
+                    resetButton.textContent = 'STOP ALARM & AMBIL'; 
+                    resetButton.classList.add('stop-alarm-btn'); 
+                    // Tombol RESET/STOP tetap terlihat di mode ALARM
+                    resetButton.style.display = 'block'; 
+                }
                 
                 // --- AKTIVASI ALARM AGRESIF (Lokal di perangkat ini) ---
                 sendNotification(itemName);
@@ -478,7 +516,7 @@
             }
             
             // 5. Jadwalkan tick berikutnya (Lokal)
-            activeIntervals[itemId] = setTimeout(() => tick(itemId, endTimeMs, inputMinutes), 1000);
+            activeIntervals[itemId] = setTimeout(() => tick(itemId, endTimeMs, inputMinutes, timerState), 1000);
         }
 
         // --- FUNGSI PUBLIK (Dipanggil oleh User) ---
@@ -515,7 +553,6 @@
             })
             .then(() => {
                 console.log(`Timer ${itemId} started and synced.`);
-                // UI akan diubah ke RUNNING oleh listener, menghilangkan status 'syncing'
             })
             .catch(error => {
                 alert("Gagal memulai timer. Periksa koneksi atau aturan Firebase.");
@@ -525,14 +562,16 @@
             });
         }
 
-        // FUNGSI INI MENGHAPUS DATA DARI FIREBASE
+        // FUNGSI INI MENGHAPUS DATA DARI FIREBASE / MENGHENTIKAN ALARM
         function resetTimer(itemId) {
+            // Hentikan alarm agresif LOKAL SEGERA saat tombol diklik
             stopAggressiveAlarm(); 
             
             // 🚨 LOGIKA UTAMA: HAPUS DARI DATABASE
+            // Panggil .remove() untuk memastikan sinkronisasi ke semua perangkat
             dbRef.child(itemId).remove()
             .then(() => {
-                console.log(`Timer ${itemId} reset and synced.`);
+                console.log(`Timer ${itemId} reset/stopped and synced.`);
             })
             .catch(error => {
                 alert("Gagal mereset timer. Periksa koneksi atau aturan Firebase.");
@@ -540,7 +579,7 @@
             });
             
             // UI akan direset secara lokal oleh listener Firebase
-            localResetUI(itemId);
+            // localResetUI(itemId); // Tidak perlu dipanggil di sini karena listener Firebase akan melakukannya.
         }
 
         // Mereset UI lokal berdasarkan item default
@@ -556,25 +595,31 @@
             const timerCard = document.getElementById(`card-${itemId}`);
             const inputTime = document.getElementById(`time-input-${itemId}`);
             const display = document.getElementById(`display-${itemId}`);
-            const endTimeDisplay = document.getElementById(`end-time-${itemId}`); // BARU
+            const endTimeDisplay = document.getElementById(`end-time-${itemId}`);
             const alarmMessage = document.getElementById(`msg-${itemId}`);
             const startButton = document.getElementById(`start-btn-${itemId}`);
             const resetButton = document.getElementById(`reset-btn-${itemId}`);
             
             if (!timerCard || !inputTime || !display || !startButton || !resetButton) return; 
 
+            // Hapus semua status dan kembalikan ke tampilan default
             timerCard.classList.remove('alert', 'warning');
-            startButton.classList.remove('syncing'); // Hapus status syncing
+            startButton.classList.remove('syncing'); 
             inputTime.readOnly = false;
             startButton.style.display = 'block';
             startButton.textContent = 'START';
             startButton.disabled = false;
+            
+            // Reset Tombol RESET/STOP
             resetButton.style.display = 'none';
+            resetButton.textContent = 'RESET'; 
+            resetButton.classList.remove('stop-alarm-btn'); 
+
             alarmMessage.style.display = 'none';
 
             inputTime.value = finalInput;
             display.textContent = formatTime(finalInput * 60);
-            if (endTimeDisplay) endTimeDisplay.textContent = 'Durasi default'; // Reset End Time Display
+            if (endTimeDisplay) endTimeDisplay.textContent = 'Durasi default';
 
             // BARU: Fokus pada input
             if (!timerCard.classList.contains('alert')) {
@@ -612,7 +657,10 @@
             
             timerListContainer.appendChild(card);
             
+            // Tombol START memanggil startCountdown
             document.getElementById(`start-btn-${item.id}`).addEventListener('click', () => startCountdown(item.id));
+            
+            // Tombol RESET/STOP memanggil resetTimer
             document.getElementById(`reset-btn-${item.id}`).addEventListener('click', () => resetTimer(item.id));
 
             // Tambahkan event listener untuk input agar display berubah
@@ -653,13 +701,8 @@
                         const endTime = timerState.endTime;
                         const inputMinutes = timerState.inputMinutes || item.defaultTimeMinutes;
                         
-                        // Waktu sudah habis, panggil tick untuk trigger alarm/reset
-                        if (endTime < Date.now()) {
-                            tick(itemId, endTime, inputMinutes); 
-                        } else {
-                            // Waktu masih berjalan
-                            tick(itemId, endTime, inputMinutes);
-                        }
+                        // Panggil tick, berikan data state agar tick tahu apakah harus menghapus dari Firebase
+                        tick(itemId, endTime, inputMinutes, timerState);
                         
                         // Pastikan status syncing hilang jika Firebase sudah merespon
                         const startButton = document.getElementById(`start-btn-${itemId}`);
