@@ -82,17 +82,22 @@
             box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
         }
 
-        /* BARU: Style untuk timer yang sedang berjalan */
+        /* Style untuk membedakan timer yang sedang berjalan */
         .timer-card.running-mode {
-            border-left: 5px solid var(--color-primary-blue); /* Garis tebal di kiri */
-            background-color: #f0f7ff; /* Warna latar belakang sedikit biru muda */
+            border-left: 5px solid var(--color-primary-blue); 
+            background-color: #f0f7ff; 
             box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1); 
         }
 
         .timer-card.running-mode h2 {
-            color: var(--color-primary-blue); /* Ubah warna header */
+            color: var(--color-primary-blue); 
         }
-        /* Akhir Style Running Mode */
+        
+        /* BARU: Mengubah warna countdown saat mode berjalan menjadi pink */
+        .timer-card.running-mode .countdown-display {
+            color: var(--color-accent-pink); 
+            animation: none !important; 
+        }
 
 
         .timer-card h2 {
@@ -546,7 +551,7 @@
                 return;
             }
             
-            // **BARU: Tambahkan class 'running-mode' saat memulai**
+            // **Tambahkan class 'running-mode' saat memulai**
             const timerCard = document.getElementById(`card-${itemId}`);
             if (timerCard) timerCard.classList.add('running-mode');
 
@@ -620,7 +625,7 @@
 
             // Hapus semua status dan kembalikan ke tampilan default
             timerCard.classList.remove('alert', 'warning');
-            // **BARU: Hapus class 'running-mode'**
+            // Hapus class 'running-mode'
             timerCard.classList.remove('running-mode');
 
             startButton.classList.remove('syncing'); 
